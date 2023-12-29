@@ -1,8 +1,7 @@
-import { Hono } from 'hono';
 import { readCleartextMessage, readKey, verify } from 'openpgp';
-import { HTTPException } from 'hono/http-exception';
+import unraw from 'unraw';
 
-type Bindings = {
+export interface Env {
 	// Example binding to KV. Learn more at https://developers.cloudflare.com/workers/runtime-apis/kv/
 	// MY_KV_NAMESPACE: KVNamespace;
 	//
@@ -21,27 +20,35 @@ type Bindings = {
 	PUBLIC_KEY: string;
 }
 
-const app = new Hono<{ Bindings: Bindings }>();
+export default {
+	async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+		const url = new URL(request.url);
 
-app.post('/', async (ctx) => {
-	const signed_url = await ctx.req.text();
+		const base64_signed_url = url.searchParams.get('url');
 
-	const publicKey = await readKey({ armoredKey: ctx.env.PUBLIC_KEY });
+		if (!base64_signed_url) {
+			return new Response('No signed url provided', { status: 400 });
+		}
 
-	const signedMessage = await readCleartextMessage({
-		cleartextMessage: signed_url
-	});
+		const plain_signed_url = atob(base64_signed_url);
 
-	const verificationResult = await verify({
-		message: signedMessage,
-		verificationKeys: publicKey
-	});
+		const signed_url = unraw(plain_signed_url);
 
-	if (!await (verificationResult.signatures[0].verified)) {
-		throw new HTTPException(400, { message: 'Invalid signature' });
-	}
+		const publicKey = await readKey({ armoredKey: env.PUBLIC_KEY });
 
-	ctx.redirect(verificationResult.data);
-});
+		const signedMessage = await readCleartextMessage({
+			cleartextMessage: signed_url
+		});
 
-export default app;
+		const verificationResult = await verify({
+			message: signedMessage,
+			verificationKeys: publicKey
+		});
+
+		if (!await (verificationResult.signatures[0].verified)) {
+			return new Response('Invalid signature', { status: 400 });
+		}
+
+		return Response.redirect(verificationResult.data, 301);
+	},
+};
