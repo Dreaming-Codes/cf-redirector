@@ -1,5 +1,5 @@
 name = "redirector"
-main = "src/index.ts"
+main = "dist/_worker.js"
 compatibility_date = "2023-05-18"
 
 # Variable bindings. These are arbitrary, plaintext strings (similar to environment variables)
